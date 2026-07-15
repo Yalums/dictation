@@ -178,8 +178,7 @@ private fun DetailSurface(
     Column(
         Modifier
             .fillMaxSize()
-            .padding(end = 48.dp)
-            .background(Color(0xE8FFFFFF), RectangleShape),
+            .background(Color(0xA3FFFFFF), RectangleShape),
     ) {
         EinkTitleBar(
             title = if (mode == MessageDetailMode.SELECT) {
@@ -214,7 +213,7 @@ private fun DetailSurface(
                                 .weight(1f)
                                 .fillMaxWidth()
                                 .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 24.dp, vertical = 18.dp),
+                                .padding(start = 24.dp, end = 32.dp, top = 18.dp, bottom = 18.dp),
                         ) {
                             MarkdownDocumentView(
                                 document = document,
@@ -250,7 +249,7 @@ private fun DetailSurface(
                         Modifier
                             .fillMaxWidth()
                             .topLine()
-                            .padding(horizontal = 18.dp, vertical = 14.dp),
+                            .padding(start = 18.dp, end = 32.dp, top = 14.dp, bottom = 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         EinkButton(
@@ -271,7 +270,7 @@ private fun DetailSurface(
                         Modifier
                             .fillMaxWidth()
                             .topLine()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                            .padding(start = 14.dp, end = 32.dp, top = 12.dp, bottom = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         EinkButton(

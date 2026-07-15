@@ -20,6 +20,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.BaselineShift
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -42,6 +44,15 @@ data class MdPalette(
     /** Headings & bold: slightly stronger than body ink so hierarchy reads on e-ink. */
     val strong: Color = ink,
 )
+
+/** CJK punctuation hanging + no mid-word break for English/numbers. */
+private val EinkLineBreak = LineBreak(
+    strategy = LineBreak.Strategy.HighQuality,
+    strictness = LineBreak.Strictness.Strict,
+    wordBreak = LineBreak.WordBreak.Default,
+)
+
+private val EinkTextStyle = TextStyle(lineBreak = EinkLineBreak)
 
 // ── LaTeX subset → styled text ──────────────────────────────────────────────
 
@@ -295,6 +306,7 @@ fun MarkdownBlockView(
                 fontWeight = headWeight,
                 color = palette.strong,
                 lineHeight = (size * 1.3).sp,
+                style = EinkTextStyle,
                 modifier = modifier,
             )
         }
@@ -305,6 +317,7 @@ fun MarkdownBlockView(
             fontWeight = bodyWeight,
             color = palette.ink,
             lineHeight = (baseFontSize * 1.55).sp,
+            style = EinkTextStyle,
             modifier = modifier,
         )
 
@@ -316,6 +329,7 @@ fun MarkdownBlockView(
                 fontWeight = bodyWeight,
                 color = palette.muted,
                 lineHeight = (baseFontSize * 1.5).sp,
+                style = EinkTextStyle,
                 modifier = Modifier.padding(start = 10.dp),
             )
         }
@@ -348,6 +362,7 @@ fun MarkdownBlockView(
                 fontWeight = bodyWeight,
                 color = palette.ink,
                 lineHeight = (baseFontSize * 1.5).sp,
+                style = EinkTextStyle,
             )
         }
 
@@ -392,7 +407,7 @@ private fun MarkdownTable(
                 table.headers[col].length,
                 table.rows.maxOfOrNull { it.getOrElse(col) { "" }.length } ?: 0,
             )
-            (maxLen * 9 + 20).coerceIn(160, 480).dp
+            (maxLen * 8).coerceIn(80, 480).dp
         }
     }
     Column(
@@ -454,6 +469,7 @@ private fun MarkdownTableRow(
                 color = palette.ink,
                 lineHeight = (baseFontSize * 1.4).sp,
                 textAlign = textAlign,
+                style = EinkTextStyle,
             )
         }
     }
