@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -177,7 +178,8 @@ private fun DetailSurface(
     Column(
         Modifier
             .fillMaxSize()
-            .background(Paper, RectangleShape),
+            .padding(end = 48.dp)
+            .background(Color(0xE8FFFFFF), RectangleShape),
     ) {
         EinkTitleBar(
             title = if (mode == MessageDetailMode.SELECT) {

@@ -386,7 +386,15 @@ private fun MarkdownTable(
     modifier: Modifier = Modifier,
 ) {
     val scroll = rememberScrollState()
-    val cellWidth = 156.dp
+    val columnWidths = remember(table) {
+        List(table.headers.size) { col ->
+            val maxLen = maxOf(
+                table.headers[col].length,
+                table.rows.maxOfOrNull { it.getOrElse(col) { "" }.length } ?: 0,
+            )
+            (maxLen * 9 + 20).coerceIn(160, 480).dp
+        }
+    }
     Column(
         modifier
             .fillMaxWidth()
@@ -400,7 +408,7 @@ private fun MarkdownTable(
             baseFontSize = baseFontSize,
             fontWeight = FontWeight.ExtraBold,
             background = palette.codeBg,
-            cellWidth = cellWidth,
+            columnWidths = columnWidths,
         )
         table.rows.forEach { row ->
             MarkdownTableRow(
@@ -410,7 +418,7 @@ private fun MarkdownTable(
                 baseFontSize = baseFontSize,
                 fontWeight = if (boldBody) FontWeight.Bold else FontWeight.Normal,
                 background = Color.Transparent,
-                cellWidth = cellWidth,
+                columnWidths = columnWidths,
             )
         }
     }
@@ -424,7 +432,7 @@ private fun MarkdownTableRow(
     baseFontSize: Int,
     fontWeight: FontWeight,
     background: Color,
-    cellWidth: androidx.compose.ui.unit.Dp,
+    columnWidths: List<androidx.compose.ui.unit.Dp>,
 ) {
     Row(Modifier.height(IntrinsicSize.Min)) {
         cells.forEachIndexed { index, cell ->
@@ -436,11 +444,11 @@ private fun MarkdownTableRow(
             Text(
                 text = inlineAnnotated(cell, palette),
                 modifier = Modifier
-                    .width(cellWidth)
+                    .width(columnWidths.getOrElse(index) { 200.dp })
                     .fillMaxHeight()
                     .background(background, RectangleShape)
                     .border(0.5.dp, palette.muted, RectangleShape)
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 fontSize = baseFontSize.sp,
                 fontWeight = fontWeight,
                 color = palette.ink,
