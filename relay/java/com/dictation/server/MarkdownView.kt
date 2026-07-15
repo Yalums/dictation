@@ -1,0 +1,452 @@
+package com.dictation.server
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.BaselineShift
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
+import com.dictation.server.core.MarkdownAlignment
+import com.dictation.server.core.MarkdownBlock
+import com.dictation.server.core.MarkdownDocument
+import com.dictation.server.core.MarkdownDocumentParser
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Zero-dependency Markdown + GFM-table + LaTeX-subset renderer for the relay
+// inbox detail page. Colors stay parameterized for the shared e-ink palette.
+// ═══════════════════════════════════════════════════════════════════════════
+
+data class MdPalette(
+    val ink: Color,
+    val muted: Color,
+    val codeBg: Color,
+    /** Headings & bold: slightly stronger than body ink so hierarchy reads on e-ink. */
+    val strong: Color = ink,
+)
+
+// ── LaTeX subset → styled text ──────────────────────────────────────────────
+
+private val TEX_SYMBOLS = mapOf(
+    "alpha" to "α", "beta" to "β", "gamma" to "γ", "delta" to "δ", "epsilon" to "ε",
+    "zeta" to "ζ", "eta" to "η", "theta" to "θ", "iota" to "ι", "kappa" to "κ",
+    "lambda" to "λ", "mu" to "μ", "nu" to "ν", "xi" to "ξ", "pi" to "π",
+    "rho" to "ρ", "sigma" to "σ", "tau" to "τ", "phi" to "φ", "chi" to "χ",
+    "psi" to "ψ", "omega" to "ω",
+    "Gamma" to "Γ", "Delta" to "Δ", "Theta" to "Θ", "Lambda" to "Λ", "Xi" to "Ξ",
+    "Pi" to "Π", "Sigma" to "Σ", "Phi" to "Φ", "Psi" to "Ψ", "Omega" to "Ω",
+    "times" to "×", "cdot" to "·", "div" to "÷", "pm" to "±", "mp" to "∓",
+    "leq" to "≤", "le" to "≤", "geq" to "≥", "ge" to "≥", "neq" to "≠", "ne" to "≠",
+    "approx" to "≈", "equiv" to "≡", "sim" to "∼", "propto" to "∝",
+    "infty" to "∞", "partial" to "∂", "nabla" to "∇",
+    "sum" to "∑", "prod" to "∏", "int" to "∫", "oint" to "∮",
+    "rightarrow" to "→", "to" to "→", "leftarrow" to "←", "Rightarrow" to "⇒",
+    "Leftarrow" to "⇐", "leftrightarrow" to "↔", "Leftrightarrow" to "⇔",
+    "in" to "∈", "notin" to "∉", "subset" to "⊂", "subseteq" to "⊆",
+    "cup" to "∪", "cap" to "∩", "emptyset" to "∅", "forall" to "∀", "exists" to "∃",
+    "land" to "∧", "lor" to "∨", "neg" to "¬", "oplus" to "⊕", "otimes" to "⊗",
+    "angle" to "∠", "perp" to "⊥", "parallel" to "∥", "degree" to "°",
+    "ldots" to "…", "cdots" to "⋯", "dots" to "…", "prime" to "′",
+    "hbar" to "ℏ", "ell" to "ℓ", "Re" to "ℜ", "Im" to "ℑ",
+    "quad" to "  ", "qquad" to "    ", ";" to " ", "," to " ", " " to " ",
+    "left" to "", "right" to "", "displaystyle" to "", "limits" to "",
+)
+
+/** Reads a {...} group or a single token starting at [start]; returns (content, nextIndex). */
+private fun readGroup(s: String, start: Int): Pair<String, Int> {
+    if (start >= s.length) return "" to start
+    if (s[start] == '{') {
+        var depth = 0
+        var j = start
+        while (j < s.length) {
+            when (s[j]) { '{' -> depth++; '}' -> { depth--; if (depth == 0) return s.substring(start + 1, j) to j + 1 } }
+            j++
+        }
+        return s.substring(start + 1) to s.length
+    }
+    if (s[start] == '\\') {
+        var j = start + 1
+        while (j < s.length && s[j].isLetter()) j++
+        return s.substring(start, if (j == start + 1) j + 1 else j) to (if (j == start + 1) j + 1 else j)
+    }
+    return s[start].toString() to start + 1
+}
+
+private fun AnnotatedString.Builder.appendTex(tex: String, color: Color) {
+    var i = 0
+    val sup = SpanStyle(baselineShift = BaselineShift.Superscript, fontSize = 0.72.em, color = color)
+    val sub = SpanStyle(baselineShift = BaselineShift.Subscript, fontSize = 0.72.em, color = color)
+    while (i < tex.length) {
+        val c = tex[i]
+        when {
+            c == '\\' -> {
+                var j = i + 1
+                while (j < tex.length && tex[j].isLetter()) j++
+                val cmd = if (j == i + 1 && j < tex.length) tex.substring(i + 1, j + 1) else tex.substring(i + 1, j)
+                if (j == i + 1 && j < tex.length) j++
+                when (cmd) {
+                    "frac" -> {
+                        val (num, n1) = readGroup(tex, j)
+                        val (den, n2) = readGroup(tex, n1)
+                        val simple = num.length <= 2 && den.length <= 2 &&
+                            num.none { it == '\\' } && den.none { it == '\\' }
+                        if (simple) {
+                            withStyle(sup) { appendTex(num, color) }
+                            append('⁄')
+                            withStyle(sub) { appendTex(den, color) }
+                        } else {
+                            append('(')
+                            appendTex(num, color)
+                            append(")/(")
+                            appendTex(den, color)
+                            append(')')
+                        }
+                        i = n2; continue
+                    }
+                    "sqrt" -> {
+                        val (arg, n1) = readGroup(tex, j)
+                        append("√(")
+                        appendTex(arg, color)
+                        append(')')
+                        i = n1; continue
+                    }
+                    "text", "mathrm", "mathbf", "mathit", "operatorname" -> {
+                        val (arg, n1) = readGroup(tex, j)
+                        append(arg)
+                        i = n1; continue
+                    }
+                    else -> {
+                        append(TEX_SYMBOLS[cmd] ?: cmd)
+                        i = j; continue
+                    }
+                }
+            }
+            c == '^' -> {
+                val (arg, n1) = readGroup(tex, i + 1)
+                withStyle(sup) { appendTex(arg, color) }
+                i = n1
+            }
+            c == '_' -> {
+                val (arg, n1) = readGroup(tex, i + 1)
+                withStyle(sub) { appendTex(arg, color) }
+                i = n1
+            }
+            c == '{' || c == '}' -> i++
+            else -> { append(c); i++ }
+        }
+    }
+}
+
+// ── Inline markdown → AnnotatedString ───────────────────────────────────────
+
+private fun inlineAnnotated(text: String, pal: MdPalette): AnnotatedString = buildAnnotatedString {
+    var i = 0
+    val n = text.length
+    while (i < n) {
+        val rest = text.substring(i)
+        when {
+            rest.startsWith("**") -> {
+                val end = text.indexOf("**", i + 2)
+                if (end > 0) {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = pal.strong)) {
+                        append(inlineAnnotated(text.substring(i + 2, end), pal))
+                    }
+                    i = end + 2
+                } else { append("**"); i += 2 }
+            }
+            rest.startsWith("~~") -> {
+                val end = text.indexOf("~~", i + 2)
+                if (end > 0) {
+                    withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough, color = pal.ink)) {
+                        append(inlineAnnotated(text.substring(i + 2, end), pal))
+                    }
+                    i = end + 2
+                } else { append("~~"); i += 2 }
+            }
+            text[i] == '*' -> {
+                val end = text.indexOf('*', i + 1)
+                if (end > 0) {
+                    withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = pal.ink)) {
+                        append(inlineAnnotated(text.substring(i + 1, end), pal))
+                    }
+                    i = end + 1
+                } else { append('*'); i++ }
+            }
+            text[i] == '`' -> {
+                val end = text.indexOf('`', i + 1)
+                if (end > 0) {
+                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = pal.codeBg, color = pal.ink)) {
+                        append(text.substring(i + 1, end))
+                    }
+                    i = end + 1
+                } else { append('`'); i++ }
+            }
+            text[i] == '$' -> {
+                val end = text.indexOf('$', i + 1)
+                if (end > 0) {
+                    appendTex(text.substring(i + 1, end), pal.ink)
+                    i = end + 1
+                } else { append('$'); i++ }
+            }
+            rest.startsWith("![") -> {
+                val mid = text.indexOf("](", i)
+                val end = if (mid > 0) text.indexOf(')', mid) else -1
+                if (mid > 0 && end > 0) {
+                    withStyle(SpanStyle(color = pal.muted)) { append("[图片: ${text.substring(i + 2, mid)}]") }
+                    i = end + 1
+                } else { append(text[i]); i++ }
+            }
+            text[i] == '[' -> {
+                val mid = text.indexOf("](", i)
+                val end = if (mid > 0) text.indexOf(')', mid) else -1
+                if (mid > 0 && end > 0) {
+                    withStyle(SpanStyle(textDecoration = TextDecoration.Underline, color = pal.ink)) {
+                        append(text.substring(i + 1, mid))
+                    }
+                    i = end + 1
+                } else { append('['); i++ }
+            }
+            else -> { append(text[i]); i++ }
+        }
+    }
+}
+
+// ── Composable renderer ─────────────────────────────────────────────────────
+
+@Composable
+fun MarkdownView(
+    source: String,
+    palette: MdPalette,
+    modifier: Modifier = Modifier,
+    baseFontSize: Int = 16,
+    /** E-ink high-contrast mode: everything bold (CSS `* { font-weight: 700 }`). */
+    boldBody: Boolean = false,
+) {
+    val document = remember(source) { MarkdownDocumentParser.parse(source) }
+    MarkdownDocumentView(
+        document = document,
+        palette = palette,
+        modifier = modifier,
+        baseFontSize = baseFontSize,
+        boldBody = boldBody,
+    )
+}
+
+@Composable
+fun MarkdownDocumentView(
+    document: MarkdownDocument,
+    palette: MdPalette,
+    modifier: Modifier = Modifier,
+    baseFontSize: Int = 16,
+    boldBody: Boolean = false,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        document.blocks.forEach { block ->
+            MarkdownBlockView(
+                block = block,
+                palette = palette,
+                baseFontSize = baseFontSize,
+                boldBody = boldBody,
+            )
+        }
+    }
+}
+
+@Composable
+fun MarkdownBlockView(
+    block: MarkdownBlock,
+    palette: MdPalette,
+    modifier: Modifier = Modifier,
+    baseFontSize: Int = 16,
+    boldBody: Boolean = false,
+) {
+    val bodyWeight = if (boldBody) FontWeight.Bold else null
+    val headWeight = if (boldBody) FontWeight.ExtraBold else FontWeight.Bold
+
+    when (block) {
+        is MarkdownBlock.Heading -> {
+            val size = when (block.level) {
+                1 -> baseFontSize + 10
+                2 -> baseFontSize + 6
+                3 -> baseFontSize + 3
+                else -> baseFontSize + 1
+            }
+            Text(
+                inlineAnnotated(block.text, palette),
+                fontSize = size.sp,
+                fontWeight = headWeight,
+                color = palette.strong,
+                lineHeight = (size * 1.3).sp,
+                modifier = modifier,
+            )
+        }
+
+        is MarkdownBlock.Paragraph -> Text(
+            inlineAnnotated(block.text, palette),
+            fontSize = baseFontSize.sp,
+            fontWeight = bodyWeight,
+            color = palette.ink,
+            lineHeight = (baseFontSize * 1.55).sp,
+            modifier = modifier,
+        )
+
+        is MarkdownBlock.Quote -> Row(modifier.height(IntrinsicSize.Min)) {
+            Box(Modifier.width(3.dp).fillMaxHeight().background(palette.muted, RectangleShape))
+            Text(
+                inlineAnnotated(block.text, palette),
+                fontSize = baseFontSize.sp,
+                fontWeight = bodyWeight,
+                color = palette.muted,
+                lineHeight = (baseFontSize * 1.5).sp,
+                modifier = Modifier.padding(start = 10.dp),
+            )
+        }
+
+        is MarkdownBlock.CodeFence -> Text(
+            block.code,
+            fontSize = (baseFontSize - 3).sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = bodyWeight,
+            color = palette.ink,
+            lineHeight = (baseFontSize * 1.35).sp,
+            modifier = modifier
+                .fillMaxWidth()
+                .background(palette.codeBg, RectangleShape)
+                .border(1.dp, palette.muted, RectangleShape)
+                .padding(10.dp),
+        )
+
+        is MarkdownBlock.ListItem -> Row(modifier.padding(start = (block.indent * 18).dp)) {
+            Text(
+                block.marker,
+                fontSize = baseFontSize.sp,
+                fontWeight = bodyWeight,
+                color = palette.ink,
+                modifier = Modifier.width(26.dp),
+            )
+            Text(
+                inlineAnnotated(block.text, palette),
+                fontSize = baseFontSize.sp,
+                fontWeight = bodyWeight,
+                color = palette.ink,
+                lineHeight = (baseFontSize * 1.5).sp,
+            )
+        }
+
+        is MarkdownBlock.Rule -> Box(
+            modifier.fillMaxWidth().height(1.dp).background(palette.muted, RectangleShape),
+        )
+
+        is MarkdownBlock.Math -> Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(
+                buildAnnotatedString { appendTex(block.tex.replace("\n", " "), palette.ink) },
+                fontSize = (baseFontSize + 2).sp,
+                fontWeight = bodyWeight,
+                color = palette.ink,
+                textAlign = TextAlign.Center,
+                lineHeight = ((baseFontSize + 2) * 1.6).sp,
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+        }
+
+        is MarkdownBlock.Table -> MarkdownTable(
+            table = block,
+            palette = palette,
+            baseFontSize = baseFontSize,
+            boldBody = boldBody,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun MarkdownTable(
+    table: MarkdownBlock.Table,
+    palette: MdPalette,
+    baseFontSize: Int,
+    boldBody: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val scroll = rememberScrollState()
+    val cellWidth = 156.dp
+    Column(
+        modifier
+            .fillMaxWidth()
+            .horizontalScroll(scroll)
+            .border(1.dp, palette.ink, RectangleShape),
+    ) {
+        MarkdownTableRow(
+            cells = table.headers,
+            alignments = table.alignments,
+            palette = palette,
+            baseFontSize = baseFontSize,
+            fontWeight = FontWeight.ExtraBold,
+            background = palette.codeBg,
+            cellWidth = cellWidth,
+        )
+        table.rows.forEach { row ->
+            MarkdownTableRow(
+                cells = row,
+                alignments = table.alignments,
+                palette = palette,
+                baseFontSize = baseFontSize,
+                fontWeight = if (boldBody) FontWeight.Bold else FontWeight.Normal,
+                background = Color.Transparent,
+                cellWidth = cellWidth,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MarkdownTableRow(
+    cells: List<String>,
+    alignments: List<MarkdownAlignment>,
+    palette: MdPalette,
+    baseFontSize: Int,
+    fontWeight: FontWeight,
+    background: Color,
+    cellWidth: androidx.compose.ui.unit.Dp,
+) {
+    Row(Modifier.height(IntrinsicSize.Min)) {
+        cells.forEachIndexed { index, cell ->
+            val textAlign = when (alignments.getOrElse(index) { MarkdownAlignment.LEFT }) {
+                MarkdownAlignment.LEFT -> TextAlign.Start
+                MarkdownAlignment.CENTER -> TextAlign.Center
+                MarkdownAlignment.RIGHT -> TextAlign.End
+            }
+            Text(
+                text = inlineAnnotated(cell, palette),
+                modifier = Modifier
+                    .width(cellWidth)
+                    .fillMaxHeight()
+                    .background(background, RectangleShape)
+                    .border(0.5.dp, palette.muted, RectangleShape)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                fontSize = baseFontSize.sp,
+                fontWeight = fontWeight,
+                color = palette.ink,
+                lineHeight = (baseFontSize * 1.4).sp,
+                textAlign = textAlign,
+            )
+        }
+    }
+}

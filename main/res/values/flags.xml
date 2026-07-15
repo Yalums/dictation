@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Flavor flag: overridden to true by the relay source set. -->
+    <bool name="is_relay">false</bool>
+</resources>
