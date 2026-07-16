@@ -125,6 +125,8 @@
     <string name="inbox_title">Inbox</string>
     <string name="btn_inbox">Inbox</string>
     <string name="multi_reply">Multi</string>
+    <string name="server_label">Server</string>
+    <string name="server_host">Server host</string>
     <string name="inbox_empty">No messages yet.\nAI replies and transcriptions will appear here.</string>
     <string name="inbox_clear">Clear</string>
     <string name="inbox_insert">Insert to note</string>

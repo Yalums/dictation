@@ -42,6 +42,9 @@ object AppPrefs {
     fun multiReplyCount(ctx: Context): Int =
         prefs(ctx).getInt("multi_reply_count", 3)
 
+    fun setMultiReplyCount(ctx: Context, count: Int) =
+        prefs(ctx).edit().putInt("multi_reply_count", count).apply()
+
     /**
      * Prefill template for multi-reply. "{text}" is replaced with the query
      * text (lasso selection); a template without the placeholder is used as a

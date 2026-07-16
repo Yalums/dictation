@@ -81,7 +81,6 @@ fun ContentSelectionPane(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 24.dp, top = 18.dp, bottom = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             document.blocks.forEachIndexed { index, block ->
                 val isSelected = MarkdownRangeSelection.isSelected(selection, index)
@@ -126,6 +125,17 @@ fun ContentSelectionPane(
                             )
                         }
                     }
+                }
+
+                if (index < document.blocks.lastIndex) {
+                    val continuesSelection = isSelected &&
+                        MarkdownRangeSelection.isSelected(selection, index + 1)
+                    Spacer(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .background(if (continuesSelection) SelectedBg else Color.Transparent),
+                    )
                 }
             }
             Spacer(Modifier.height(24.dp))

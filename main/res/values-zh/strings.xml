@@ -112,6 +112,8 @@
     <string name="inbox_title">收件箱</string>
     <string name="btn_inbox">收件箱</string>
     <string name="multi_reply">多回复</string>
+    <string name="server_label">服务器</string>
+    <string name="server_host">服务器地址</string>
     <string name="inbox_empty">暂无消息。\nAI 回复和语音转录会先出现在这里。</string>
     <string name="inbox_clear">清空</string>
     <string name="inbox_insert">插入笔记</string>

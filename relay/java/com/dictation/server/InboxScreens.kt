@@ -53,10 +53,11 @@ fun InboxGridScreen(
     onDelete: (String) -> Unit,
     onDeleteMany: (List<String>) -> Unit,
     onMerge: (List<String>) -> Unit,
-    onClear: () -> Unit,
     onBack: () -> Unit,
+    onClose: (() -> Unit)? = null,
     onPin: (String, Boolean) -> Unit = { _, _ -> },
     onReadd: (List<String>) -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
     var page by remember { mutableStateOf(0) }
     val pageCount = maxOf(1, (messages.size + PAGE_SIZE - 1) / PAGE_SIZE)
@@ -69,7 +70,7 @@ fun InboxGridScreen(
     val selected = remember { mutableStateListOf<String>() }
     fun exitSelection() { selecting = false; selected.clear() }
 
-    Column(Modifier.fillMaxSize().background(Paper)) {
+    Column(modifier.fillMaxWidth().background(Paper)) {
         if (selecting) {
             SelectionBar(
                 count = selected.size,
@@ -89,11 +90,13 @@ fun InboxGridScreen(
                 },
             )
         } else {
+            // Doubles as the app's main title bar now that the grid is the
+            // relay's home screen; "Close" fully stops the service + process.
             EinkTitleBar(
                 title = stringResource(R.string.inbox_title),
                 onBack = onBack,
-                rightLabel = if (messages.isNotEmpty()) stringResource(R.string.inbox_clear) else null,
-                onRight = if (messages.isNotEmpty()) onClear else null,
+                rightLabel = if (onClose != null) stringResource(R.string.close) else null,
+                onRight = onClose,
             )
         }
 

@@ -11,7 +11,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollConfiguration
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -19,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
@@ -32,7 +36,6 @@ import com.dictation.server.core.MarkdownSelectionState
 import com.dictation.server.model.RelayMessage
 import com.dictation.server.service.DictationService
 import com.dictation.server.ui.EinkButton
-import com.dictation.server.ui.EinkTitleBar
 import com.dictation.server.ui.Faint
 import com.dictation.server.ui.Ink
 import com.dictation.server.ui.Muted
@@ -40,6 +43,14 @@ import com.dictation.server.ui.Paper
 import com.dictation.server.ui.topLine
 
 enum class MessageDetailMode { READ, SELECT }
+
+private fun Modifier.tapNoRipple(onClick: () -> Unit): Modifier = composed {
+    clickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+        onClick = onClick,
+    )
+}
 
 class MessageDetailActivity : ComponentActivity() {
 
@@ -149,13 +160,59 @@ class MessageDetailActivity : ComponentActivity() {
         if (detailMode == MessageDetailMode.SELECT) {
             resetSelection()
         } else {
-            finish()
+            moveTaskToBack(true)
         }
     }
 
     private fun resetSelection() {
         detailMode = MessageDetailMode.READ
         selection = MarkdownRangeSelection.clear()
+    }
+}
+
+@Composable
+private fun DetailStatusBar(
+    msg: RelayMessage?,
+    mode: MessageDetailMode,
+    selection: MarkdownSelectionState,
+    readScroll: ScrollState,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 28.dp, end = 32.dp, top = 16.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (msg != null) {
+                sourceLabel(msg.source) + " · " + formatInboxTime(msg.updatedAt)
+            } else {
+                stringResource(R.string.btn_inbox)
+            },
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = Muted,
+            modifier = Modifier.weight(1f),
+        )
+
+        when (mode) {
+            MessageDetailMode.READ -> if (readScroll.maxValue > 0) {
+                val percent = (readScroll.value * 100 / readScroll.maxValue).coerceIn(0, 100)
+                Text(
+                    text = "$percent%",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Muted,
+                )
+            }
+
+            MessageDetailMode.SELECT -> Text(
+                text = stringResource(R.string.inbox_select_title, selection.groupCount),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Muted,
+            )
+        }
     }
 }
 
@@ -175,20 +232,18 @@ private fun DetailSurface(
     onInsert: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Color(0xA3FFFFFF), RectangleShape),
-    ) {
-        EinkTitleBar(
-            title = if (mode == MessageDetailMode.SELECT) {
-                stringResource(R.string.inbox_select_title, selection.groupCount)
-            } else if (msg != null) {
-                sourceLabel(msg.source) + " · " + formatInboxTime(msg.updatedAt)
-            } else {
-                stringResource(R.string.btn_inbox)
-            },
-            onBack = onBack,
+    val readScroll = rememberScrollState()
+    val rootModifier = Modifier
+        .fillMaxSize()
+        .background(Color(0xA3FFFFFF), RectangleShape)
+        .then(if (mode == MessageDetailMode.READ) Modifier.tapNoRipple(onBack) else Modifier)
+
+    Column(rootModifier) {
+        DetailStatusBar(
+            msg = msg,
+            mode = mode,
+            selection = selection,
+            readScroll = readScroll,
         )
 
         if (msg == null) {
@@ -212,7 +267,7 @@ private fun DetailSurface(
                             Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
+                                .verticalScroll(readScroll)
                                 .padding(start = 24.dp, end = 32.dp, top = 18.dp, bottom = 18.dp),
                         ) {
                             MarkdownDocumentView(
