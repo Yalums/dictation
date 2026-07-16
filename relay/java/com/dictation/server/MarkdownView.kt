@@ -425,21 +425,24 @@ private fun MarkdownTable(
 
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val available = maxWidth
-        // Partition non-empty columns into groups that fit within available width
+        // Even distribution: calculate rows needed, then spread columns uniformly
         val groups = remember(filteredWidths, available) {
+            val n = filteredWidths.size
+            if (n == 0) return@remember emptyList<IntRange>()
+
+            val totalWidth = filteredWidths.fold(0f) { acc, w -> acc + w.value }
+            val avail = available.value.coerceAtLeast(1f)
+            val numRows = kotlin.math.ceil(totalWidth / avail)
+                .toInt().coerceIn(1, n)
+
+            val basePerRow = n / numRows
+            val remainder = n % numRows
             val result = mutableListOf<IntRange>()
             var start = 0
-            while (start < filteredWidths.size) {
-                var totalWidth = 0.dp
-                var end = start
-                while (end < filteredWidths.size) {
-                    val next = totalWidth + filteredWidths[end]
-                    if (next > available && end > start) break
-                    totalWidth = next
-                    end++
-                }
-                result += start until end
-                start = end
+            for (row in 0 until numRows) {
+                val count = basePerRow + if (row < remainder) 1 else 0
+                result += start until (start + count)
+                start += count
             }
             result
         }
