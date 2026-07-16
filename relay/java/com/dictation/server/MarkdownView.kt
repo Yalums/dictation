@@ -412,17 +412,28 @@ private fun MarkdownTable(
         }
     }
 
+    // Filter out columns that are entirely blank (header + all rows)
+    val nonEmptyCols = remember(table) {
+        (0 until table.headers.size).filter { col ->
+            table.headers[col].isNotBlank() ||
+                table.rows.any { it.getOrElse(col) { "" }.isNotBlank() }
+        }
+    }
+    val filteredWidths = remember(nonEmptyCols, columnWidths) {
+        nonEmptyCols.map { columnWidths[it] }
+    }
+
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val available = maxWidth
-        // Partition columns into groups that fit within available width
-        val groups = remember(columnWidths, available) {
+        // Partition non-empty columns into groups that fit within available width
+        val groups = remember(filteredWidths, available) {
             val result = mutableListOf<IntRange>()
             var start = 0
-            while (start < columnWidths.size) {
+            while (start < filteredWidths.size) {
                 var totalWidth = 0.dp
                 var end = start
-                while (end < columnWidths.size) {
-                    val next = totalWidth + columnWidths[end]
+                while (end < filteredWidths.size) {
+                    val next = totalWidth + filteredWidths[end]
                     if (next > available && end > start) break
                     totalWidth = next
                     end++
@@ -434,9 +445,11 @@ private fun MarkdownTable(
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            groups.forEach { colRange ->
-                val subWidths = colRange.map { columnWidths[it] }
-                val subAlignments = colRange.map { table.alignments.getOrElse(it) { MarkdownAlignment.LEFT } }
+            groups.forEach { groupRange ->
+                // Map group indices back to original column indices
+                val cols = groupRange.map { nonEmptyCols[it] }
+                val subWidths = groupRange.map { filteredWidths[it] }
+                val subAlignments = cols.map { table.alignments.getOrElse(it) { MarkdownAlignment.LEFT } }
 
                 Column(
                     Modifier
@@ -444,7 +457,7 @@ private fun MarkdownTable(
                         .border(1.dp, palette.ink, RectangleShape),
                 ) {
                     MarkdownTableRow(
-                        cells = colRange.map { table.headers.getOrElse(it) { "" } },
+                        cells = cols.map { table.headers.getOrElse(it) { "" } },
                         alignments = subAlignments,
                         palette = palette,
                         baseFontSize = baseFontSize,
@@ -454,7 +467,7 @@ private fun MarkdownTable(
                     )
                     table.rows.forEach { row ->
                         MarkdownTableRow(
-                            cells = colRange.map { row.getOrElse(it) { "" } },
+                            cells = cols.map { row.getOrElse(it) { "" } },
                             alignments = subAlignments,
                             palette = palette,
                             baseFontSize = baseFontSize,
