@@ -2,9 +2,7 @@ package com.dictation.server
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -392,6 +390,10 @@ fun MarkdownBlockView(
     }
 }
 
+/**
+ * Splits a wide table into multiple sub-tables that each fit within
+ * the available width. When all columns fit, renders a single table.
+ */
 @Composable
 private fun MarkdownTable(
     table: MarkdownBlock.Table,
@@ -400,7 +402,6 @@ private fun MarkdownTable(
     boldBody: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val scroll = rememberScrollState()
     val columnWidths = remember(table) {
         List(table.headers.size) { col ->
             val maxLen = maxOf(
@@ -410,31 +411,60 @@ private fun MarkdownTable(
             (maxLen * 8).coerceIn(80, 480).dp
         }
     }
-    Column(
-        modifier
-            .fillMaxWidth()
-            .horizontalScroll(scroll)
-            .border(1.dp, palette.ink, RectangleShape),
-    ) {
-        MarkdownTableRow(
-            cells = table.headers,
-            alignments = table.alignments,
-            palette = palette,
-            baseFontSize = baseFontSize,
-            fontWeight = FontWeight.ExtraBold,
-            background = palette.codeBg,
-            columnWidths = columnWidths,
-        )
-        table.rows.forEach { row ->
-            MarkdownTableRow(
-                cells = row,
-                alignments = table.alignments,
-                palette = palette,
-                baseFontSize = baseFontSize,
-                fontWeight = if (boldBody) FontWeight.Bold else FontWeight.Normal,
-                background = Color.Transparent,
-                columnWidths = columnWidths,
-            )
+
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val available = maxWidth
+        // Partition columns into groups that fit within available width
+        val groups = remember(columnWidths, available) {
+            val result = mutableListOf<IntRange>()
+            var start = 0
+            while (start < columnWidths.size) {
+                var totalWidth = 0.dp
+                var end = start
+                while (end < columnWidths.size) {
+                    val next = totalWidth + columnWidths[end]
+                    if (next > available && end > start) break
+                    totalWidth = next
+                    end++
+                }
+                result += start until end
+                start = end
+            }
+            result
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            groups.forEach { colRange ->
+                val subWidths = colRange.map { columnWidths[it] }
+                val subAlignments = colRange.map { table.alignments.getOrElse(it) { MarkdownAlignment.LEFT } }
+
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, palette.ink, RectangleShape),
+                ) {
+                    MarkdownTableRow(
+                        cells = colRange.map { table.headers.getOrElse(it) { "" } },
+                        alignments = subAlignments,
+                        palette = palette,
+                        baseFontSize = baseFontSize,
+                        fontWeight = FontWeight.ExtraBold,
+                        background = palette.codeBg,
+                        columnWidths = subWidths,
+                    )
+                    table.rows.forEach { row ->
+                        MarkdownTableRow(
+                            cells = colRange.map { row.getOrElse(it) { "" } },
+                            alignments = subAlignments,
+                            palette = palette,
+                            baseFontSize = baseFontSize,
+                            fontWeight = if (boldBody) FontWeight.Bold else FontWeight.Normal,
+                            background = Color.Transparent,
+                            columnWidths = subWidths,
+                        )
+                    }
+                }
+            }
         }
     }
 }

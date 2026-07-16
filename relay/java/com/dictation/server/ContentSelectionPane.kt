@@ -102,9 +102,7 @@ fun ContentSelectionPane(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
-                        Modifier
-                            .weight(1f)
-                            .padding(vertical = 4.dp),
+                        Modifier.weight(1f),
                     ) {
                         MarkdownBlockView(
                             block = block,
